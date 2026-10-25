@@ -117,6 +117,15 @@
   .topic-row .tcount{font-family:'IBM Plex Mono',monospace; font-size:12px; color:#7c8590;}
   .topic-row.disabled{opacity:.45; cursor:default;}
   .topic-row.sub{margin-left:22px; border-left:3px solid var(--sea); padding-left:12px;}
+  .topic-row{flex-wrap:wrap; cursor:default;}
+  .topic-row .tcheck{display:flex; align-items:center; gap:12px; flex:1; min-width:200px; cursor:pointer;}
+  .topic-row .trange{display:flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6570;}
+  .topic-row .trange input{
+    width:64px; height:auto; padding:4px 6px; border:1.5px solid var(--navy); background:#fff;
+    font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink); text-align:center;
+  }
+  .topic-row .trange input:disabled{opacity:.4;}
+  .topic-row.off .tname{color:#7c8590;}
 
   .toggle-row{
     display:flex; align-items:center; justify-content:space-between; gap:14px;
@@ -538,12 +547,21 @@ function buildTopicCheckboxes(){
   const wrap = $('topic-list');
   wrap.innerHTML = '';
   TOPIC_ROWS.forEach(r=>{
-    const row = document.createElement('label');
+    const row = document.createElement('div');
     row.className = 'topic-row';
     if(r.key==='2.1' || r.key==='2.2') row.classList.add('sub');
-    row.innerHTML = "<input type='checkbox' checked data-key='"+r.key+"'>"+
-      "<span class='tname'>"+r.name+"</span>"+
-      "<span class='tcount'>"+r.count+" въпр.</span>";
+    row.innerHTML =
+      "<label class='tcheck'><input type='checkbox' checked data-key='"+r.key+"'>"+
+        "<span class='tname'>"+r.name+"</span>"+
+        "<span class='tcount'>"+r.count+" въпр.</span></label>"+
+      "<span class='trange'>от <input type='number' min='1' max='"+r.count+"' value='1' data-from='"+r.key+"'>"+
+        " до <input type='number' min='1' max='"+r.count+"' value='"+r.count+"' data-to='"+r.key+"'></span>";
+    const cb = row.querySelector('input[type=checkbox]');
+    const nums = row.querySelectorAll('.trange input');
+    cb.addEventListener('change', ()=>{
+      nums.forEach(n=>n.disabled = !cb.checked);
+      row.classList.toggle('off', !cb.checked);
+    });
     wrap.appendChild(row);
   });
 }
@@ -565,12 +583,29 @@ $('setup-start').addEventListener('click', ()=>{
     const boxes = Array.from($('topic-list').querySelectorAll('input[type=checkbox]'));
     const selectedKeys = boxes.filter(b=>b.checked).map(b=>b.dataset.key);
     if(selectedKeys.length===0){
+      $('topic-warn').textContent = 'Избери поне една тема.';
       $('topic-warn').classList.add('show');
       return;
     }
     $('topic-warn').classList.remove('show');
     const selectedRows = TOPIC_ROWS.filter(r=>selectedKeys.includes(r.key));
-    let list = DATA.map((_,i)=>i).filter(i=>selectedRows.some(r=>r.match(DATA[i])));
+    let list = [];
+    let badRange = false;
+    selectedRows.forEach(r=>{
+      let from = parseInt($('topic-list').querySelector("[data-from='"+r.key+"']").value,10);
+      let to = parseInt($('topic-list').querySelector("[data-to='"+r.key+"']").value,10);
+      if(isNaN(from)) from = 1;
+      if(isNaN(to)) to = r.count;
+      if(from<1 || to>r.count || from>to){ badRange = true; return; }
+      // position within the topic, ordered by question number
+      const idxs = DATA.map((_,i)=>i).filter(i=>r.match(DATA[i]));
+      list = list.concat(idxs.slice(from-1, to));
+    });
+    if(badRange){
+      $('topic-warn').textContent = 'Невалиден диапазон — "от" трябва да е ≤ "до" и в рамките на броя въпроси в темата.';
+      $('topic-warn').classList.add('show');
+      return;
+    }
     if($('opt-qorder').checked) list = shuffle(list);
     state.order = list;
     enterQuiz();
